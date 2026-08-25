@@ -73,6 +73,7 @@ document.querySelector('#loginForm').addEventListener('submit', async (event) =>
 	if (!response.ok) { document.querySelector('#authError').textContent = 'Неверный email или пароль'; return; }
 	const account = await response.json();
 	if (account.role === 'doctor') { window.location.href = '/doctor.html'; return; }
+	if (account.role === 'patient') { window.location.href = '/patient.html'; return; }
 	document.querySelector('#authError').textContent = '';
 	document.querySelector('#authScreen').classList.add('hidden');
 	await loadUsers();

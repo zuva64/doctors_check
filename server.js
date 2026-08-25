@@ -25,6 +25,9 @@ const doctorAppointments = [
   { time: '12:00', duration: '25 мин', patient: 'Мария Волкова', type: 'Результаты анализов', status: 'Через 1 ч 30 мин', initials: 'МВ', tone: 'blue' },
   { time: '14:30', duration: '40 мин', patient: 'Алексей Соколов', type: 'Консультация', status: 'Через 4 ч', initials: 'АС', tone: 'violet' }
 ];
+const patient = { email: 'elena.smirnova@medlink.ru', salt: 'elena-demo-salt', passwordHash: hashPassword(process.env.PATIENT_PASSWORD || 'PatientDemo123!', 'elena-demo-salt') };
+const patientProfile = { name: 'Елена Смирнова', email: patient.email, doctor: 'Анна Крылова', specialty: 'Терапевт', appointment: 'Сегодня, 10:30', type: 'Контрольное посещение' };
+const videoRoom = { active: false, doctorJoined: false, patientJoined: false, micOn: true, cameraOn: true, startedAt: null };
 
 function sendJson(response, status, body, headers = {}) { response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', ...headers }); response.end(JSON.stringify(body)); }
 function parseCookies(request) { return Object.fromEntries((request.headers.cookie || '').split(';').filter(Boolean).map((item) => item.trim().split('='))); }
@@ -41,10 +44,12 @@ const server = http.createServer(async (request, response) => {
       const email = String(body.email || '').toLowerCase();
       const isAdmin = email === admin.email.toLowerCase() && safeEqual(hashPassword(String(body.password || ''), admin.salt), admin.passwordHash);
       const isDoctor = email === doctor.email.toLowerCase() && safeEqual(hashPassword(String(body.password || ''), doctor.salt), doctor.passwordHash);
-      if (!isAdmin && !isDoctor) return sendJson(response, 401, { error: 'Неверный email или пароль' });
-      const role = isAdmin ? 'admin' : 'doctor';
-      const token = crypto.randomBytes(32).toString('hex'); sessions.set(token, { role, email: isAdmin ? admin.email : doctor.email, createdAt: Date.now() });
-      return sendJson(response, 200, { email: isAdmin ? admin.email : doctor.email, role }, { 'Set-Cookie': `medlink_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800` });
+      const isPatient = email === patient.email.toLowerCase() && safeEqual(hashPassword(String(body.password || ''), patient.salt), patient.passwordHash);
+      if (!isAdmin && !isDoctor && !isPatient) return sendJson(response, 401, { error: 'Неверный email или пароль' });
+      const role = isAdmin ? 'admin' : isDoctor ? 'doctor' : 'patient';
+      const accountEmail = isAdmin ? admin.email : isDoctor ? doctor.email : patient.email;
+      const token = crypto.randomBytes(32).toString('hex'); sessions.set(token, { role, email: accountEmail, createdAt: Date.now() });
+      return sendJson(response, 200, { email: accountEmail, role }, { 'Set-Cookie': `medlink_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800` });
     }
     if (request.method === 'POST' && request.url === '/api/logout') { const token = parseCookies(request).medlink_session; sessions.delete(token); return sendJson(response, 200, { ok: true }, { 'Set-Cookie': 'medlink_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0' }); }
     if (request.method === 'GET' && request.url === '/api/session') { const session = currentSession(request); return session ? sendJson(response, 200, { email: session.email, role: session.role }) : sendJson(response, 401, { error: 'Требуется авторизация' }); }
@@ -53,6 +58,27 @@ const server = http.createServer(async (request, response) => {
       const session = currentSession(request);
       if (!session || session.role !== 'doctor') return sendJson(response, 403, { error: 'Доступ только для врача' });
       return sendJson(response, 200, { profile: doctorProfile, appointments: doctorAppointments });
+    }
+    if (request.method === 'GET' && request.url === '/api/patient/profile') {
+      const session = currentSession(request);
+      if (!session || session.role !== 'patient') return sendJson(response, 403, { error: 'Доступ только для пациента' });
+      return sendJson(response, 200, { profile: patientProfile });
+    }
+    if (request.method === 'GET' && request.url === '/api/video/room') {
+      const session = currentSession(request);
+      if (!session || !['doctor', 'patient'].includes(session.role)) return sendJson(response, 403, { error: 'Нет доступа к видеоприему' });
+      return sendJson(response, 200, { ...videoRoom, viewer: session.role });
+    }
+    if (request.method === 'POST' && request.url === '/api/video/room') {
+      const session = currentSession(request);
+      if (!session || !['doctor', 'patient'].includes(session.role)) return sendJson(response, 403, { error: 'Нет доступа к видеоприему' });
+      const body = await readBody(request);
+      if (body.action === 'join') { videoRoom[`${session.role}Joined`] = true; videoRoom.active = true; videoRoom.startedAt ||= Date.now(); }
+      if (body.action === 'leave') { videoRoom[`${session.role}Joined`] = false; if (!videoRoom.doctorJoined && !videoRoom.patientJoined) { videoRoom.active = false; videoRoom.startedAt = null; } }
+      if (body.action === 'toggle-mic') videoRoom.micOn = !videoRoom.micOn;
+      if (body.action === 'toggle-camera') videoRoom.cameraOn = !videoRoom.cameraOn;
+      if (body.action === 'end' && session.role === 'doctor') { videoRoom.active = false; videoRoom.doctorJoined = false; videoRoom.patientJoined = false; videoRoom.startedAt = null; }
+      return sendJson(response, 200, { ...videoRoom, viewer: session.role });
     }
     if (request.method === 'POST' && request.url === '/api/users') {
       if (!requireAdmin(request, response)) return;

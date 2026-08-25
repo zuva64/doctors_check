@@ -29,6 +29,6 @@ async function loadProfile() {
 }
 
 document.querySelector('#logout').addEventListener('click', async () => { await fetch('/api/logout', { method: 'POST' }); window.location.href = '/'; });
-document.querySelector('#startNext').addEventListener('click', () => { const current = document.querySelector('.doctor-appointment.current'); if (current) showToast(`Подключение к приему ${current.querySelector('strong').textContent}`); });
+document.querySelector('#startNext').addEventListener('click', () => { window.location.href = '/video.html'; });
 document.querySelector('#editProfile').addEventListener('click', () => showToast('Редактирование профиля будет доступно после подключения медицинской БД'));
 loadProfile().catch(() => { window.location.href = '/'; });
