@@ -11,5 +11,11 @@ async function loadPatient() {
 }
 document.querySelector('#joinCall').addEventListener('click', () => { window.location.href = '/video.html'; });
 document.querySelector('#logout').addEventListener('click', async () => { await fetch('/api/logout', { method: 'POST' }); window.location.href = '/'; });
-document.querySelector('#editData').addEventListener('click', () => showToast('Редактирование будет доступно после подключения медицинской БД'));
+document.querySelector('#editData').addEventListener('click', async () => {
+  const name = window.prompt('Имя и фамилия', document.querySelector('#dataName').textContent);
+  if (!name) return;
+  const response = await fetch('/api/patient/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+  showToast(response.ok ? 'Данные сохранены' : 'Не удалось сохранить данные');
+  if (response.ok) loadPatient();
+});
 loadPatient();
