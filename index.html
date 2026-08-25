@@ -1,62 +1,39 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#f5f7f6" />
-  <title>MedLink — прием пациента</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MedLink — Администрирование</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="app-shell">
+  <div class="layout">
     <aside class="sidebar">
-      <div class="brand"><span class="brand-mark">+</span><span>med<span>link</span></span></div>
-      <div class="profile-card">
-        <div class="avatar doctor-avatar">АК</div>
-        <div><strong>Анна Крылова</strong><small>Терапевт</small></div>
-        <button class="icon-button subtle" aria-label="Открыть меню профиля">•••</button>
-      </div>
-      <nav class="main-nav" aria-label="Основная навигация">
-        <a class="nav-item active" href="#"><span class="nav-icon">▣</span>Сегодня <b class="nav-count">4</b></a>
-        <a class="nav-item" href="#"><span class="nav-icon">◷</span>Расписание</a>
-        <a class="nav-item" href="#"><span class="nav-icon">♧</span>Пациенты</a>
-        <a class="nav-item" href="#"><span class="nav-icon">▤</span>История приемов</a>
+      <div class="brand"><span class="brand-mark">+</span>med<span>link</span></div>
+      <div class="admin-profile"><div class="avatar admin-avatar">АМ</div><div><strong>Алексей Морозов</strong><small>Суперадминистратор</small></div><button class="dots" aria-label="Меню профиля">•••</button></div>
+      <nav aria-label="Навигация">
+        <a href="#overview"><span>◫</span>Обзор</a>
+        <a href="#users" class="active"><span>♙</span>Пользователи <b>24</b></a>
+        <a href="#roles"><span>◇</span>Роли и доступы</a>
+        <a href="#activity"><span>◷</span>Журнал активности</a>
+        <a href="#settings"><span>⚙</span>Настройки системы</a>
       </nav>
-      <div class="sidebar-bottom">
-        <a class="nav-item" href="#"><span class="nav-icon">⚙</span>Настройки</a>
-        <div class="help-box"><div class="help-icon">?</div><div><strong>Нужна помощь?</strong><small>Мы на связи 24/7</small></div></div>
-        <p class="copyright">medlink © 2024</p>
-      </div>
+      <div class="sidebar-footer"><div class="support"><span>?</span><div><strong>Центр поддержки</strong><small>Ответим в течение 15 минут</small></div></div><small>MedLink Admin · v1.0.0</small></div>
     </aside>
-
-    <main class="main-content">
-      <header class="topbar"><div><p class="eyebrow">СРЕДА, 24 АПРЕЛЯ</p><h1>Добрый день, Анна</h1></div><div class="top-actions"><button class="icon-button notification" aria-label="Уведомления">♧<i></i></button><div class="top-avatar doctor-avatar">АК</div></div></header>
-
-      <section class="content-grid">
-        <div class="workspace">
-          <div class="section-heading"><div><h2>Ближайшие приемы</h2><p>4 пациента ожидают сегодня</p></div><button class="outline-button"><span>＋</span>Новый прием</button></div>
-          <div class="appointment-list">
-            <button class="appointment active" data-patient="0"><span class="appointment-time">10:30<small>25 мин</small></span><span class="mini-avatar pink">ЕС</span><span class="patient-summary"><strong>Елена Смирнова</strong><small>Контрольное посещение</small></span><span class="status live">Сейчас</span><span class="chevron">›</span></button>
-            <button class="appointment" data-patient="1"><span class="appointment-time">11:15<small>30 мин</small></span><span class="mini-avatar yellow">ИП</span><span class="patient-summary"><strong>Илья Петров</strong><small>Первичный прием</small></span><span class="status waiting">Через 45 мин</span><span class="chevron">›</span></button>
-            <button class="appointment" data-patient="2"><span class="appointment-time">12:00<small>25 мин</small></span><span class="mini-avatar blue">МВ</span><span class="patient-summary"><strong>Мария Волкова</strong><small>Результаты анализов</small></span><span class="status waiting">Через 1 ч 30 мин</span><span class="chevron">›</span></button>
-            <button class="appointment" data-patient="3"><span class="appointment-time">14:30<small>40 мин</small></span><span class="mini-avatar violet">АС</span><span class="patient-summary"><strong>Алексей Соколов</strong><small>Консультация</small></span><span class="status waiting">Через 4 ч</span><span class="chevron">›</span></button>
-          </div>
-
-          <div class="section-heading notes-heading"><div><h2>Заметки по приему</h2><p>Личные записи видны только вам</p></div><button class="text-button" id="saveNote">Сохранить</button></div>
-          <div class="notes-panel"><div class="note-tag">▰ &nbsp;ПРЕДЫДУЩИЙ ПРИЕМ · 12 АПРЕЛЯ</div><p id="noteText">Жалобы на периодическую усталость. Рекомендовано контролировать режим сна и питьевой баланс.</p><button class="edit-note" id="editNote">✎</button></div>
-        </div>
-
-        <section class="video-column">
-          <div class="video-header"><div><div class="live-dot"><span></span>Видеоприем</div><h2 id="videoPatient">Елена Смирнова</h2></div><div class="call-timer" id="timer">00:00</div></div>
-          <div class="video-stage" id="videoStage"><div class="patient-video"><div class="patient-photo"></div><div class="video-name"><span class="sound-bars">▮▮▮</span><strong id="stagePatient">Елена Смирнова</strong><small>Пациент</small></div></div><div class="self-view"><div class="doctor-photo"></div><span>Вы</span></div><div class="connection"><span></span>Отличное соединение</div><div class="video-controls"><button class="control-button" id="micButton" aria-label="Выключить микрофон">♩</button><button class="control-button" id="cameraButton" aria-label="Выключить камеру">▣</button><button class="control-button" aria-label="Поделиться экраном">↗</button><button class="control-button end-call" id="endCall" aria-label="Завершить звонок">☎</button><button class="control-button" aria-label="Другие действия">•••</button></div></div>
-          <div class="video-footer"><div class="secure"><span>◉</span><div><strong>Защищенный видеоканал</strong><small>Соединение шифруется сквозным шифрованием</small></div></div><button class="patient-info-button">Данные пациента <span>→</span></button></div>
-        </section>
+    <main class="main">
+      <header class="topbar"><div><div class="crumb">АДМИНИСТРИРОВАНИЕ <span>/</span> ПОЛЬЗОВАТЕЛИ</div><h1>Учетные записи</h1></div><div class="top-right"><button class="bell" aria-label="Уведомления">♧<i></i></button><div class="top-avatar admin-avatar">АМ</div></div></header>
+      <section class="page-content" id="overview">
+        <div class="intro"><div><p>Управляйте доступом сотрудников к платформе</p></div><button class="primary-button" id="addUser"><span>＋</span> Добавить пользователя</button></div>
+        <div class="metrics" aria-label="Статистика пользователей"><div class="metric"><span class="metric-icon mint">♙</span><div><small>Всего пользователей</small><strong id="totalUsers">24</strong><em>+2 за месяц</em></div></div><div class="metric"><span class="metric-icon blue">◉</span><div><small>Активные сейчас</small><strong>18</strong><em>75% от общего числа</em></div></div><div class="metric"><span class="metric-icon peach">◷</span><div><small>Ожидают активации</small><strong id="pendingUsers">3</strong><em class="warning">Требуют внимания</em></div></div><div class="metric"><span class="metric-icon lilac">▣</span><div><small>Заблокированы</small><strong id="blockedUsers">3</strong><em>За последний месяц</em></div></div></div>
+        <section class="users-panel" id="users"><div class="panel-header"><div><h2>Все пользователи <span id="userCount">24</span></h2><p>Последнее обновление: сегодня, 09:42</p></div><button class="export-button" id="exportUsers">⇩ Экспорт CSV</button></div><div class="toolbar"><label class="search"><span>⌕</span><input id="search" type="search" placeholder="Поиск по имени или email"></label><select id="roleFilter" aria-label="Фильтр по роли"><option value="all">Все роли</option><option value="Врач">Врач</option><option value="Администратор">Администратор</option><option value="Регистратура">Регистратура</option></select><select id="statusFilter" aria-label="Фильтр по статусу"><option value="all">Все статусы</option><option value="Активен">Активен</option><option value="Ожидает активации">Ожидает активации</option><option value="Заблокирован">Заблокирован</option></select><button class="filter-button" id="resetFilters">Сбросить</button></div><div class="table-wrap"><table><thead><tr><th><input type="checkbox" id="selectAll" aria-label="Выбрать всех"></th><th>ПОЛЬЗОВАТЕЛЬ</th><th>РОЛЬ</th><th>СТАТУС</th><th>ПОСЛЕДНИЙ ВХОД</th><th></th></tr></thead><tbody id="userTable"></tbody></table><div class="empty-state" id="emptyState">Пользователи не найдены</div></div><div class="table-footer"><span id="resultCount">Показано 6 из 24 пользователей</span><div><button class="page-button active">1</button><button class="page-button">2</button><button class="page-button">3</button><button class="page-button">→</button></div></div></section>
       </section>
     </main>
   </div>
+  <div class="modal-backdrop" id="modal"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><button class="close-modal" id="closeModal" aria-label="Закрыть">×</button><div class="modal-kicker">НОВАЯ УЧЕТНАЯ ЗАПИСЬ</div><h2 id="modalTitle">Добавить пользователя</h2><p>Заполните данные сотрудника. Приглашение будет отправлено на email.</p><form id="userForm"><label>Имя и фамилия<input name="name" required placeholder="Например, Анна Крылова"></label><label>Рабочий email<input name="email" type="email" required placeholder="name@clinic.ru"></label><label>Роль<select name="role"><option>Врач</option><option>Администратор</option><option>Регистратура</option></select></label><div class="modal-actions"><button type="button" class="cancel-button" id="cancelModal">Отмена</button><button class="primary-button" type="submit">Создать пользователя</button></div></form></section></div>
+  <div class="toast" id="toast">Пользователь добавлен</div>
   <script src="app.js"></script>
 </body>
 </html>

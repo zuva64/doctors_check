@@ -1,59 +1,58 @@
-const patients = [
-  { name: 'Елена Смирнова', note: 'Жалобы на периодическую усталость. Рекомендовано контролировать режим сна и питьевой баланс.' },
-  { name: 'Илья Петров', note: 'Первичный прием. Заполнить анамнез и уточнить список принимаемых препаратов.' },
-  { name: 'Мария Волкова', note: 'Ожидаются результаты общего анализа крови и биохимии.' },
-  { name: 'Алексей Соколов', note: 'Консультация по результатам последнего обследования.' }
+const defaultUsers = [
+	['Анна Крылова', 'anna.krylova@medlink.ru', 'Врач', 'Активен', 'Сегодня, 09:42'],
+	['Дмитрий Орлов', 'dmitry.orlov@medlink.ru', 'Администратор', 'Активен', 'Сегодня, 09:18'],
+	['Мария Волкова', 'maria.volkova@medlink.ru', 'Врач', 'Активен', 'Вчера, 18:36'],
+	['Ирина Белова', 'irina.belova@medlink.ru', 'Регистратура', 'Ожидает активации', 'Никогда'],
+	['Сергей Павлов', 'sergey.pavlov@medlink.ru', 'Врач', 'Заблокирован', '22 апр. 2024'],
+	['Ольга Соколова', 'olga.sokolova@medlink.ru', 'Регистратура', 'Активен', '21 апр. 2024']
 ];
+const users = JSON.parse(localStorage.getItem('medlink-users') || 'null') || defaultUsers.map((user) => ({ name: user[0], email: user[1], role: user[2], status: user[3], lastLogin: user[4] }));
+const table = document.querySelector('#userTable');
+const emptyState = document.querySelector('#emptyState');
+const search = document.querySelector('#search');
+const roleFilter = document.querySelector('#roleFilter');
+const statusFilter = document.querySelector('#statusFilter');
+const modal = document.querySelector('#modal');
+const toast = document.querySelector('#toast');
 
-const appointments = document.querySelectorAll('.appointment');
-const videoPatient = document.querySelector('#videoPatient');
-const stagePatient = document.querySelector('#stagePatient');
-const noteText = document.querySelector('#noteText');
-const timer = document.querySelector('#timer');
-let seconds = 0;
-let callActive = true;
+function initials(name) {
+	return name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+}
 
-appointments.forEach((appointment) => {
-  appointment.addEventListener('click', () => {
-    const patient = patients[Number(appointment.dataset.patient)];
-    appointments.forEach((item) => item.classList.remove('active'));
-    appointment.classList.add('active');
-    videoPatient.textContent = patient.name;
-    stagePatient.textContent = patient.name;
-    noteText.textContent = patient.note;
-  });
+function renderUsers() {
+	const query = search.value.toLowerCase().trim();
+	const filtered = users.filter((user) => {
+		const matchesText = `${user.name} ${user.email}`.toLowerCase().includes(query);
+		return matchesText && (roleFilter.value === 'all' || user.role === roleFilter.value) && (statusFilter.value === 'all' || user.status === statusFilter.value);
+	});
+	table.innerHTML = filtered.map((user, index) => `<tr><td><input type="checkbox" aria-label="Выбрать ${user.name}"></td><td class="user-cell"><span class="user-avatar avatar-${index % 5}">${initials(user.name)}</span><span>${user.name}<small>${user.email}</small></span></td><td class="role">${user.role}</td><td><span class="status ${user.status === 'Ожидает активации' ? 'pending' : user.status === 'Заблокирован' ? 'blocked' : ''}">${user.status}</span></td><td>${user.lastLogin}</td><td><button class="row-menu" aria-label="Действия для ${user.name}">•••</button></td></tr>`).join('');
+	emptyState.style.display = filtered.length ? 'none' : 'block';
+	document.querySelector('#resultCount').textContent = `Показано ${filtered.length} из ${users.length} пользователей`;
+	document.querySelector('#userCount').textContent = users.length;
+	document.querySelector('#totalUsers').textContent = users.length;
+	document.querySelector('#pendingUsers').textContent = users.filter((user) => user.status === 'Ожидает активации').length;
+	document.querySelector('#blockedUsers').textContent = users.filter((user) => user.status === 'Заблокирован').length;
+}
+
+function showToast(message) { toast.textContent = message; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2200); }
+function closeModal() { modal.classList.remove('open'); }
+
+[search, roleFilter, statusFilter].forEach((control) => control.addEventListener('input', renderUsers));
+document.querySelector('#resetFilters').addEventListener('click', () => { search.value = ''; roleFilter.value = 'all'; statusFilter.value = 'all'; renderUsers(); });
+document.querySelector('#selectAll').addEventListener('change', (event) => { table.querySelectorAll('input[type="checkbox"]').forEach((box) => { box.checked = event.target.checked; }); });
+document.querySelector('#addUser').addEventListener('click', () => modal.classList.add('open'));
+document.querySelector('#closeModal').addEventListener('click', closeModal);
+document.querySelector('#cancelModal').addEventListener('click', closeModal);
+modal.addEventListener('click', (event) => { if (event.target === modal) closeModal(); });
+document.querySelector('#userForm').addEventListener('submit', (event) => {
+	event.preventDefault();
+	const form = new FormData(event.target);
+	users.unshift({ name: form.get('name'), email: form.get('email'), role: form.get('role'), status: 'Ожидает активации', lastLogin: 'Никогда' });
+	localStorage.setItem('medlink-users', JSON.stringify(users));
+	event.target.reset(); closeModal(); renderUsers(); showToast('Пользователь добавлен и приглашение отправлено');
 });
-
-setInterval(() => {
-  if (!callActive) return;
-  seconds += 1;
-  const minutes = String(Math.floor(seconds / 60)).padStart(2, '0');
-  const remainder = String(seconds % 60).padStart(2, '0');
-  timer.textContent = `${minutes}:${remainder}`;
-}, 1000);
-
-document.querySelector('#endCall').addEventListener('click', (event) => {
-  callActive = !callActive;
-  event.currentTarget.textContent = callActive ? '☎' : '▶';
-  document.querySelector('.live-dot').innerHTML = callActive ? '<span></span>Видеоприем' : '<span style="background:#e5a45b"></span>Прием на паузе';
+document.querySelector('#exportUsers').addEventListener('click', () => {
+	const csv = ['Имя,Email,Роль,Статус,Последний вход', ...users.map((user) => [user.name, user.email, user.role, user.status, user.lastLogin].map((value) => `"${value}"`).join(','))].join('\n');
+	const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); link.download = 'medlink-users.csv'; link.click(); URL.revokeObjectURL(link.href); showToast('CSV-файл подготовлен');
 });
-
-document.querySelector('#micButton').addEventListener('click', (event) => {
-  event.currentTarget.classList.toggle('muted');
-  event.currentTarget.textContent = event.currentTarget.classList.contains('muted') ? '♪' : '♩';
-});
-
-document.querySelector('#cameraButton').addEventListener('click', (event) => {
-  event.currentTarget.classList.toggle('muted');
-  document.querySelector('.patient-photo').style.opacity = event.currentTarget.classList.contains('muted') ? '0.25' : '1';
-});
-
-document.querySelector('#editNote').addEventListener('click', () => {
-  const nextNote = window.prompt('Изменить заметку', noteText.textContent);
-  if (nextNote) noteText.textContent = nextNote;
-});
-
-document.querySelector('#saveNote').addEventListener('click', (event) => {
-  event.currentTarget.textContent = 'Сохранено';
-  setTimeout(() => { event.currentTarget.textContent = 'Сохранить'; }, 1400);
-});
+renderUsers();
