@@ -1,30 +1,344 @@
 document.head.insertAdjacentHTML('beforeend', '<link rel="stylesheet" href="patient-video.css">');
+
 const connectionText = document.querySelector('#connectionText');
 const stateText = document.querySelector('#participantState');
 const roomTimer = document.querySelector('#roomTimer');
+const localVideo = document.querySelector('#localVideo');
+const remoteVideo = document.querySelector('#remoteVideo');
+const localFeed = document.querySelector('#localFeed');
+const remoteFeed = document.querySelector('#remoteFeed');
+const micButton = document.querySelector('#mic');
+const cameraButton = document.querySelector('#camera');
+const screenButton = document.querySelector('#screen');
+
 let viewer = 'patient';
-let currentRoom = null;
+let localStream = new MediaStream();
+let remoteStream = new MediaStream();
+let peer = null;
+let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+let pendingCandidates = [];
+let lastRevision = -1;
+let offerInFlight = false;
+let pollTimer = null;
+let signalTimer = null;
 let timer = null;
-function api(action) { return fetch('/api/video/room', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) }).then((response) => response.json()); }
+let screenTrack = null;
+let leaving = false;
+
+function roomApi(action, extra = {}) {
+  return fetch('/api/video/room', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, ...extra })
+  }).then(parseJson);
+}
+
+async function parseJson(response) {
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error || 'Ошибка запроса');
+  return body;
+}
+
+function setParticipantLabels() {
+  const doctor = viewer === 'doctor';
+  document.querySelector('#localName').textContent = doctor ? 'Анна Крылова (вы)' : 'Елена Смирнова (вы)';
+  document.querySelector('#localRole').textContent = doctor ? 'Врач · локальное видео' : 'Пациент · локальное видео';
+  document.querySelector('#remoteName').textContent = doctor ? 'Елена Смирнова' : 'Анна Крылова';
+  document.querySelector('#remoteRole').textContent = doctor ? 'Пациент' : 'Врач · удаленное видео';
+}
+
+async function sendSignal(type, payload) {
+  const target = viewer === 'doctor' ? 'patient' : 'doctor';
+  await parseJson(await fetch('/api/video/signals', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ target, type, payload })
+  }));
+}
+
+function updateMediaButtons() {
+  const audioTrack = localStream.getAudioTracks()[0];
+  const videoTrack = localStream.getVideoTracks()[0];
+  micButton.classList.toggle('muted', !audioTrack || !audioTrack.enabled);
+  cameraButton.classList.toggle('muted', !videoTrack || !videoTrack.enabled);
+  micButton.setAttribute('aria-pressed', String(Boolean(audioTrack && audioTrack.enabled)));
+  cameraButton.setAttribute('aria-pressed', String(Boolean(videoTrack && videoTrack.enabled)));
+  localFeed.classList.toggle('has-video', Boolean(videoTrack && videoTrack.enabled));
+}
+
+async function acquireLocalMedia() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    throw new Error('Камера доступна только через HTTPS или localhost');
+  }
+  localStream = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+  });
+  localVideo.srcObject = localStream;
+  updateMediaButtons();
+}
+
+function closePeer() {
+  if (peer) {
+    peer.onicecandidate = null;
+    peer.ontrack = null;
+    peer.onconnectionstatechange = null;
+    peer.close();
+  }
+  peer = null;
+  pendingCandidates = [];
+  offerInFlight = false;
+  remoteStream = new MediaStream();
+  remoteVideo.srcObject = null;
+  remoteFeed.classList.remove('has-video');
+}
+
+function createPeer() {
+  closePeer();
+  peer = new RTCPeerConnection({ iceServers });
+  localStream.getTracks().forEach((track) => peer.addTrack(track, localStream));
+
+  peer.onicecandidate = ({ candidate }) => {
+    if (candidate) sendSignal('ice', candidate.toJSON()).catch(console.error);
+  };
+
+  peer.ontrack = ({ track, streams }) => {
+    const incoming = streams[0];
+    if (incoming) {
+      remoteVideo.srcObject = incoming;
+    } else {
+      remoteStream.addTrack(track);
+      remoteVideo.srcObject = remoteStream;
+    }
+    remoteFeed.classList.add('has-video');
+    track.addEventListener('ended', () => {
+      if (!remoteVideo.srcObject || remoteVideo.srcObject.getVideoTracks().every((item) => item.readyState === 'ended')) {
+        remoteFeed.classList.remove('has-video');
+      }
+    });
+  };
+
+  peer.onconnectionstatechange = () => {
+    const state = peer && peer.connectionState;
+    if (state === 'connected') {
+      connectionText.textContent = 'Прямое WebRTC-соединение установлено';
+      stateText.textContent = 'Камера и микрофон передаются собеседнику';
+    } else if (state === 'connecting') {
+      connectionText.textContent = 'Устанавливаем защищенное медиасоединение…';
+    } else if (state === 'failed') {
+      connectionText.textContent = 'Не удалось установить медиасоединение. Проверьте TURN-сервер';
+      offerInFlight = false;
+    } else if (state === 'disconnected') {
+      connectionText.textContent = 'Соединение прервано, пытаемся восстановить…';
+      offerInFlight = false;
+    }
+  };
+}
+
+async function flushCandidates() {
+  if (!peer || !peer.remoteDescription) return;
+  const queued = pendingCandidates.splice(0);
+  for (const candidate of queued) {
+    try { await peer.addIceCandidate(candidate); } catch (error) { console.error(error); }
+  }
+}
+
+async function createOffer() {
+  if (viewer !== 'doctor' || !peer || offerInFlight || peer.signalingState !== 'stable') return;
+  offerInFlight = true;
+  const offer = await peer.createOffer();
+  await peer.setLocalDescription(offer);
+  await sendSignal('offer', peer.localDescription.toJSON());
+}
+
+async function handleSignal(message) {
+  if (!peer) createPeer();
+
+  if (message.type === 'offer') {
+    await peer.setRemoteDescription(message.payload);
+    await flushCandidates();
+    const answer = await peer.createAnswer();
+    await peer.setLocalDescription(answer);
+    await sendSignal('answer', peer.localDescription.toJSON());
+    return;
+  }
+
+  if (message.type === 'answer') {
+    if (peer.signalingState === 'have-local-offer') {
+      await peer.setRemoteDescription(message.payload);
+      await flushCandidates();
+      offerInFlight = false;
+    }
+    return;
+  }
+
+  if (message.type === 'ice') {
+    if (peer.remoteDescription) await peer.addIceCandidate(message.payload);
+    else pendingCandidates.push(message.payload);
+  }
+}
+
+async function pollSignals() {
+  const response = await parseJson(await fetch('/api/video/signals'));
+  for (const message of response.messages) {
+    try { await handleSignal(message); } catch (error) {
+      console.error(error);
+      connectionText.textContent = 'Ошибка согласования WebRTC-соединения';
+    }
+  }
+}
+
 function renderRoom(room) {
-  currentRoom = room;
   const both = room.doctorJoined && room.patientJoined;
-  connectionText.textContent = both ? 'Врач и пациент подключены к видеоприему' : room.doctorJoined ? 'Врач уже в комнате, подключитесь к приему' : 'Ожидание подключения врача';
-  stateText.textContent = both ? 'Оба участника видят этот экран одновременно' : 'Видеоприем начнется после подключения обоих участников';
-  document.querySelector('#mic').classList.toggle('muted', !room.micOn);
-  document.querySelector('#camera').classList.toggle('muted', !room.cameraOn);
-  if (room.startedAt && !timer) { timer = setInterval(() => { roomTimer.textContent = new Date(Math.max(0, Date.now() - room.startedAt)).toISOString().substring(14, 19); }, 1000); }
+  if (!both) {
+    connectionText.textContent = viewer === 'doctor'
+      ? 'Ожидание подключения пациента'
+      : 'Ожидание подключения врача';
+    stateText.textContent = 'Видеоприем начнется после подключения обоих участников';
+  } else if (!peer || peer.connectionState === 'new') {
+    connectionText.textContent = 'Оба участника в комнате, устанавливаем WebRTC-соединение…';
+    stateText.textContent = 'Согласование защищенного медиаканала';
+  }
+
+  if (room.startedAt && !timer) {
+    timer = setInterval(() => {
+      roomTimer.textContent = new Date(Math.max(0, Date.now() - room.startedAt)).toISOString().substring(14, 19);
+    }, 1000);
+  }
 }
+
+async function applyRoom(room, force = false) {
+  renderRoom(room);
+  const both = room.doctorJoined && room.patientJoined;
+  const revisionChanged = room.revision !== lastRevision;
+  if (revisionChanged) lastRevision = room.revision;
+
+  if (!both) {
+    if (peer && peer.connectionState !== 'new') createPeer();
+    return;
+  }
+
+  if (force || revisionChanged || !peer || ['failed', 'closed'].includes(peer.connectionState)) {
+    createPeer();
+  }
+  if (viewer === 'doctor') await createOffer();
+}
+
+async function toggleMic() {
+  const track = localStream.getAudioTracks()[0];
+  if (!track) return;
+  track.enabled = !track.enabled;
+  updateMediaButtons();
+}
+
+async function toggleCamera() {
+  const track = localStream.getVideoTracks()[0];
+  if (!track) return;
+  track.enabled = !track.enabled;
+  updateMediaButtons();
+}
+
+async function stopScreenShare() {
+  if (!screenTrack) return;
+  const cameraTrack = localStream.getVideoTracks()[0];
+  const sender = peer && peer.getSenders().find((item) => item.track && item.track.kind === 'video');
+  if (sender && cameraTrack) await sender.replaceTrack(cameraTrack);
+  screenTrack.onended = null;
+  screenTrack.stop();
+  screenTrack = null;
+  screenButton.classList.remove('muted');
+  localVideo.srcObject = localStream;
+  updateMediaButtons();
+}
+
+async function toggleScreenShare() {
+  if (screenTrack) {
+    await stopScreenShare();
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    connectionText.textContent = 'Демонстрация экрана не поддерживается этим браузером';
+    return;
+  }
+  try {
+    const display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    screenTrack = display.getVideoTracks()[0];
+    const sender = peer && peer.getSenders().find((item) => item.track && item.track.kind === 'video');
+    if (sender) await sender.replaceTrack(screenTrack);
+    localVideo.srcObject = display;
+    localFeed.classList.add('has-video');
+    screenButton.classList.add('muted');
+    screenTrack.onended = () => stopScreenShare().catch(console.error);
+  } catch (error) {
+    if (error.name !== 'NotAllowedError') connectionText.textContent = 'Не удалось начать демонстрацию экрана';
+  }
+}
+
+async function leaveRoom(action) {
+  if (leaving) return;
+  leaving = true;
+  clearInterval(pollTimer);
+  clearInterval(signalTimer);
+  await stopScreenShare().catch(() => {});
+  localStream.getTracks().forEach((track) => track.stop());
+  closePeer();
+  await roomApi(action).catch(() => {});
+  window.location.href = viewer === 'doctor' ? '/doctor.html' : '/patient.html';
+}
+
 async function init() {
-  const session = await fetch('/api/session');
-  if (!session.ok) { window.location.href = '/'; return; }
-  const data = await session.json(); viewer = data.role;
-  const room = await (await fetch('/api/video/room')).json(); renderRoom(room);
-  await renderRoom(await api('join'));
-  setInterval(async () => renderRoom(await (await fetch('/api/video/room')).json()), 1500);
+  const session = await parseJson(await fetch('/api/session'));
+  viewer = session.role;
+  if (!['doctor', 'patient'].includes(viewer)) {
+    window.location.href = '/';
+    return;
+  }
+  setParticipantLabels();
+
+  try {
+    await acquireLocalMedia();
+  } catch (error) {
+    connectionText.textContent = error.message || 'Разрешите доступ к камере и микрофону';
+    localStream = new MediaStream();
+    updateMediaButtons();
+  }
+
+  const config = await parseJson(await fetch('/api/video/ice-config'));
+  iceServers = config.iceServers;
+  createPeer();
+
+  const joinedRoom = await roomApi('join');
+  lastRevision = joinedRoom.revision;
+  await applyRoom(joinedRoom, true);
+
+  signalTimer = setInterval(() => pollSignals().catch(console.error), 500);
+  pollTimer = setInterval(async () => {
+    try {
+      const room = await parseJson(await fetch('/api/video/room'));
+      await applyRoom(room);
+    } catch (error) {
+      console.error(error);
+    }
+  }, 1200);
 }
-document.querySelector('#mic').addEventListener('click', async () => renderRoom(await api('toggle-mic')));
-document.querySelector('#camera').addEventListener('click', async () => renderRoom(await api('toggle-camera')));
-document.querySelector('#end').addEventListener('click', async () => { await api('end'); window.location.href = viewer === 'doctor' ? '/doctor.html' : '/patient.html'; });
-document.querySelector('#leave').addEventListener('click', async () => { await api('leave'); window.location.href = viewer === 'doctor' ? '/doctor.html' : '/patient.html'; });
-init().catch(() => { window.location.href = '/'; });
+
+micButton.addEventListener('click', toggleMic);
+cameraButton.addEventListener('click', toggleCamera);
+screenButton.addEventListener('click', toggleScreenShare);
+document.querySelector('#end').addEventListener('click', () => leaveRoom(viewer === 'doctor' ? 'end' : 'leave'));
+document.querySelector('#leave').addEventListener('click', () => leaveRoom('leave'));
+window.addEventListener('pagehide', () => {
+  if (!leaving) {
+    fetch('/api/video/room', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'leave' }),
+      keepalive: true
+    }).catch(() => {});
+  }
+});
+
+init().catch((error) => {
+  console.error(error);
+  connectionText.textContent = 'Не удалось открыть видеоприем';
+});
