@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f5f7f6" />
+  <title>MedLink — прием пациента</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">+</span><span>med<span>link</span></span></div>
+      <div class="profile-card">
+        <div class="avatar doctor-avatar">АК</div>
+        <div><strong>Анна Крылова</strong><small>Терапевт</small></div>
+        <button class="icon-button subtle" aria-label="Открыть меню профиля">•••</button>
+      </div>
+      <nav class="main-nav" aria-label="Основная навигация">
+        <a class="nav-item active" href="#"><span class="nav-icon">▣</span>Сегодня <b class="nav-count">4</b></a>
+        <a class="nav-item" href="#"><span class="nav-icon">◷</span>Расписание</a>
+        <a class="nav-item" href="#"><span class="nav-icon">♧</span>Пациенты</a>
+        <a class="nav-item" href="#"><span class="nav-icon">▤</span>История приемов</a>
+      </nav>
+      <div class="sidebar-bottom">
+        <a class="nav-item" href="#"><span class="nav-icon">⚙</span>Настройки</a>
+        <div class="help-box"><div class="help-icon">?</div><div><strong>Нужна помощь?</strong><small>Мы на связи 24/7</small></div></div>
+        <p class="copyright">medlink © 2024</p>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar"><div><p class="eyebrow">СРЕДА, 24 АПРЕЛЯ</p><h1>Добрый день, Анна</h1></div><div class="top-actions"><button class="icon-button notification" aria-label="Уведомления">♧<i></i></button><div class="top-avatar doctor-avatar">АК</div></div></header>
+
+      <section class="content-grid">
+        <div class="workspace">
+          <div class="section-heading"><div><h2>Ближайшие приемы</h2><p>4 пациента ожидают сегодня</p></div><button class="outline-button"><span>＋</span>Новый прием</button></div>
+          <div class="appointment-list">
+            <button class="appointment active" data-patient="0"><span class="appointment-time">10:30<small>25 мин</small></span><span class="mini-avatar pink">ЕС</span><span class="patient-summary"><strong>Елена Смирнова</strong><small>Контрольное посещение</small></span><span class="status live">Сейчас</span><span class="chevron">›</span></button>
+            <button class="appointment" data-patient="1"><span class="appointment-time">11:15<small>30 мин</small></span><span class="mini-avatar yellow">ИП</span><span class="patient-summary"><strong>Илья Петров</strong><small>Первичный прием</small></span><span class="status waiting">Через 45 мин</span><span class="chevron">›</span></button>
+            <button class="appointment" data-patient="2"><span class="appointment-time">12:00<small>25 мин</small></span><span class="mini-avatar blue">МВ</span><span class="patient-summary"><strong>Мария Волкова</strong><small>Результаты анализов</small></span><span class="status waiting">Через 1 ч 30 мин</span><span class="chevron">›</span></button>
+            <button class="appointment" data-patient="3"><span class="appointment-time">14:30<small>40 мин</small></span><span class="mini-avatar violet">АС</span><span class="patient-summary"><strong>Алексей Соколов</strong><small>Консультация</small></span><span class="status waiting">Через 4 ч</span><span class="chevron">›</span></button>
+          </div>
+
+          <div class="section-heading notes-heading"><div><h2>Заметки по приему</h2><p>Личные записи видны только вам</p></div><button class="text-button" id="saveNote">Сохранить</button></div>
+          <div class="notes-panel"><div class="note-tag">▰ &nbsp;ПРЕДЫДУЩИЙ ПРИЕМ · 12 АПРЕЛЯ</div><p id="noteText">Жалобы на периодическую усталость. Рекомендовано контролировать режим сна и питьевой баланс.</p><button class="edit-note" id="editNote">✎</button></div>
+        </div>
+
+        <section class="video-column">
+          <div class="video-header"><div><div class="live-dot"><span></span>Видеоприем</div><h2 id="videoPatient">Елена Смирнова</h2></div><div class="call-timer" id="timer">00:00</div></div>
+          <div class="video-stage" id="videoStage"><div class="patient-video"><div class="patient-photo"></div><div class="video-name"><span class="sound-bars">▮▮▮</span><strong id="stagePatient">Елена Смирнова</strong><small>Пациент</small></div></div><div class="self-view"><div class="doctor-photo"></div><span>Вы</span></div><div class="connection"><span></span>Отличное соединение</div><div class="video-controls"><button class="control-button" id="micButton" aria-label="Выключить микрофон">♩</button><button class="control-button" id="cameraButton" aria-label="Выключить камеру">▣</button><button class="control-button" aria-label="Поделиться экраном">↗</button><button class="control-button end-call" id="endCall" aria-label="Завершить звонок">☎</button><button class="control-button" aria-label="Другие действия">•••</button></div></div>
+          <div class="video-footer"><div class="secure"><span>◉</span><div><strong>Защищенный видеоканал</strong><small>Соединение шифруется сквозным шифрованием</small></div></div><button class="patient-info-button">Данные пациента <span>→</span></button></div>
+        </section>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
