@@ -44,6 +44,14 @@ node server.js
 
 После запуска откройте в браузере http://localhost:8000.
 
+## Доступ через интернет
+
+Текущий экземпляр опубликован через GitHub Codespaces:
+
+https://organic-acorn-7r9g9p9jv57cpvxv-8000.app.github.dev/
+
+Ссылка работает, пока запущен Codespace и процесс `node server.js`. Для постоянного production-доступа потребуется разместить Node.js-сервис на Render, Railway, Fly.io или другом серверном хостинге.
+
 Демо-доступ администратора:
 
 - email: `admin@medlink.ru`;
