@@ -39,7 +39,34 @@ const doctorAppointments = [
   { time: '14:30', duration: '40 мин', patient: 'Алексей Соколов', type: 'Консультация', status: 'Через 4 ч', initials: 'АС', tone: 'violet' }
 ];
 const patientProfile = { name: 'Елена Смирнова', email: patient.email, doctor: 'Анна Крылова', specialty: 'Терапевт', appointment: 'Сегодня, 10:30', type: 'Контрольное посещение' };
-const videoRoom = { active: false, doctorJoined: false, patientJoined: false, micOn: true, cameraOn: true, startedAt: null };
+const videoRoom = { active: false, doctorJoined: false, patientJoined: false, micOn: true, cameraOn: true, startedAt: null, revision: 0 };
+const videoSignals = { doctor: [], patient: [] };
+let nextVideoSignalId = 1;
+
+function resetVideoSignals() {
+  videoSignals.doctor.length = 0;
+  videoSignals.patient.length = 0;
+}
+
+function getIceServers() {
+  const stunUrls = String(process.env.STUN_URLS || 'stun:stun.l.google.com:19302')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const iceServers = [{ urls: stunUrls.length === 1 ? stunUrls[0] : stunUrls }];
+  const turnUrls = String(process.env.TURN_URLS || process.env.TURN_URL || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (turnUrls.length) {
+    iceServers.push({
+      urls: turnUrls.length === 1 ? turnUrls[0] : turnUrls,
+      username: process.env.TURN_USERNAME || '',
+      credential: process.env.TURN_CREDENTIAL || ''
+    });
+  }
+  return iceServers;
+}
 
 function sendJson(response, status, body, headers = {}) { response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', ...headers }); response.end(JSON.stringify(body)); }
 function parseCookies(request) { return Object.fromEntries((request.headers.cookie || '').split(';').filter(Boolean).map((item) => item.trim().split('='))); }
@@ -91,15 +118,57 @@ const server = http.createServer(async (request, response) => {
       if (!session || !['doctor', 'patient'].includes(session.role)) return sendJson(response, 403, { error: 'Нет доступа к видеоприему' });
       return sendJson(response, 200, { ...videoRoom, viewer: session.role });
     }
+    if (request.method === 'GET' && request.url === '/api/video/ice-config') {
+      const session = currentSession(request);
+      if (!session || !['doctor', 'patient'].includes(session.role)) return sendJson(response, 403, { error: 'Нет доступа к видеоприему' });
+      return sendJson(response, 200, { iceServers: getIceServers() });
+    }
+    if (request.method === 'GET' && request.url === '/api/video/signals') {
+      const session = currentSession(request);
+      if (!session || !['doctor', 'patient'].includes(session.role)) return sendJson(response, 403, { error: 'Нет доступа к видеоприему' });
+      const messages = videoSignals[session.role].splice(0);
+      return sendJson(response, 200, { messages });
+    }
+    if (request.method === 'POST' && request.url === '/api/video/signals') {
+      const session = currentSession(request);
+      if (!session || !['doctor', 'patient'].includes(session.role)) return sendJson(response, 403, { error: 'Нет доступа к видеоприему' });
+      const body = await readBody(request);
+      const expectedTarget = session.role === 'doctor' ? 'patient' : 'doctor';
+      if (body.target !== expectedTarget || !['offer', 'answer', 'ice'].includes(body.type) || !body.payload || typeof body.payload !== 'object') {
+        return sendJson(response, 400, { error: 'Некорректное WebRTC-сообщение' });
+      }
+      if (JSON.stringify(body.payload).length > 50000) return sendJson(response, 413, { error: 'WebRTC-сообщение слишком большое' });
+      videoSignals[expectedTarget].push({ id: nextVideoSignalId++, from: session.role, type: body.type, payload: body.payload });
+      if (videoSignals[expectedTarget].length > 100) videoSignals[expectedTarget].splice(0, videoSignals[expectedTarget].length - 100);
+      return sendJson(response, 202, { ok: true });
+    }
     if (request.method === 'POST' && request.url === '/api/video/room') {
       const session = currentSession(request);
       if (!session || !['doctor', 'patient'].includes(session.role)) return sendJson(response, 403, { error: 'Нет доступа к видеоприему' });
       const body = await readBody(request);
-      if (body.action === 'join') { videoRoom[`${session.role}Joined`] = true; videoRoom.active = true; videoRoom.startedAt ||= Date.now(); }
-      if (body.action === 'leave') { videoRoom[`${session.role}Joined`] = false; if (!videoRoom.doctorJoined && !videoRoom.patientJoined) { videoRoom.active = false; videoRoom.startedAt = null; } }
+      if (body.action === 'join') {
+        resetVideoSignals();
+        videoRoom.revision += 1;
+        videoRoom[`${session.role}Joined`] = true;
+        videoRoom.active = true;
+        videoRoom.startedAt ||= Date.now();
+      }
+      if (body.action === 'leave') {
+        resetVideoSignals();
+        videoRoom.revision += 1;
+        videoRoom[`${session.role}Joined`] = false;
+        if (!videoRoom.doctorJoined && !videoRoom.patientJoined) { videoRoom.active = false; videoRoom.startedAt = null; }
+      }
       if (body.action === 'toggle-mic') videoRoom.micOn = !videoRoom.micOn;
       if (body.action === 'toggle-camera') videoRoom.cameraOn = !videoRoom.cameraOn;
-      if (body.action === 'end' && session.role === 'doctor') { videoRoom.active = false; videoRoom.doctorJoined = false; videoRoom.patientJoined = false; videoRoom.startedAt = null; }
+      if (body.action === 'end' && session.role === 'doctor') {
+        resetVideoSignals();
+        videoRoom.revision += 1;
+        videoRoom.active = false;
+        videoRoom.doctorJoined = false;
+        videoRoom.patientJoined = false;
+        videoRoom.startedAt = null;
+      }
       return sendJson(response, 200, { ...videoRoom, viewer: session.role });
     }
     if (request.method === 'POST' && request.url === '/api/users') {
