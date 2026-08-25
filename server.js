@@ -1,0 +1,51 @@
+const http = require('node:http');
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+
+const port = Number(process.env.PORT || 8000);
+const root = __dirname;
+const sessions = new Map();
+const users = [
+  { id: 1, name: 'Анна Крылова', email: 'anna.krylova@medlink.ru', role: 'Врач', status: 'Активен', lastLogin: 'Сегодня, 09:42' },
+  { id: 2, name: 'Дмитрий Орлов', email: 'dmitry.orlov@medlink.ru', role: 'Администратор', status: 'Активен', lastLogin: 'Сегодня, 09:18' },
+  { id: 3, name: 'Мария Волкова', email: 'maria.volkova@medlink.ru', role: 'Врач', status: 'Активен', lastLogin: 'Вчера, 18:36' },
+  { id: 4, name: 'Ирина Белова', email: 'irina.belova@medlink.ru', role: 'Регистратура', status: 'Ожидает активации', lastLogin: 'Никогда' },
+  { id: 5, name: 'Сергей Павлов', email: 'sergey.pavlov@medlink.ru', role: 'Врач', status: 'Заблокирован', lastLogin: '22 апр. 2024' },
+  { id: 6, name: 'Ольга Соколова', email: 'olga.sokolova@medlink.ru', role: 'Регистратура', status: 'Активен', lastLogin: '21 апр. 2024' }
+];
+
+function hashPassword(password, salt) { return crypto.scryptSync(password, salt, 64).toString('hex'); }
+const admin = { email: process.env.ADMIN_EMAIL || 'admin@medlink.ru', salt: process.env.ADMIN_SALT || 'medlink-demo-salt', passwordHash: hashPassword(process.env.ADMIN_PASSWORD || 'ChangeMe123!', process.env.ADMIN_SALT || 'medlink-demo-salt') };
+
+function sendJson(response, status, body, headers = {}) { response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', ...headers }); response.end(JSON.stringify(body)); }
+function parseCookies(request) { return Object.fromEntries((request.headers.cookie || '').split(';').filter(Boolean).map((item) => item.trim().split('='))); }
+function currentSession(request) { const token = parseCookies(request).medlink_session; return token && sessions.get(token); }
+function requireAdmin(request, response) { const session = currentSession(request); if (!session || session.role !== 'admin') { sendJson(response, 401, { error: 'Требуется авторизация' }); return null; } return session; }
+function readBody(request) { return new Promise((resolve, reject) => { let body = ''; request.on('data', (chunk) => { body += chunk; if (body.length > 100000) request.destroy(); }); request.on('end', () => { try { resolve(JSON.parse(body || '{}')); } catch (error) { reject(error); } }); request.on('error', reject); }); }
+function safeEqual(left, right) { const a = Buffer.from(left); const b = Buffer.from(right); return a.length === b.length && crypto.timingSafeEqual(a, b); }
+function serveStatic(request, response) { const requested = request.url === '/' ? '/index.html' : request.url; const filePath = path.normalize(path.join(root, requested)); if (!filePath.startsWith(root) || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) return sendJson(response, 404, { error: 'Не найдено' }); const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' }; response.writeHead(200, { 'Content-Type': types[path.extname(filePath)] || 'application/octet-stream' }); fs.createReadStream(filePath).pipe(response); }
+
+const server = http.createServer(async (request, response) => {
+  try {
+    if (request.method === 'POST' && request.url === '/api/login') {
+      const body = await readBody(request);
+      const passwordHash = hashPassword(String(body.password || ''), admin.salt);
+      if (String(body.email || '').toLowerCase() !== admin.email.toLowerCase() || !safeEqual(passwordHash, admin.passwordHash)) return sendJson(response, 401, { error: 'Неверный email или пароль' });
+      const token = crypto.randomBytes(32).toString('hex'); sessions.set(token, { role: 'admin', email: admin.email, createdAt: Date.now() });
+      return sendJson(response, 200, { email: admin.email, role: 'admin' }, { 'Set-Cookie': `medlink_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800` });
+    }
+    if (request.method === 'POST' && request.url === '/api/logout') { const token = parseCookies(request).medlink_session; sessions.delete(token); return sendJson(response, 200, { ok: true }, { 'Set-Cookie': 'medlink_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0' }); }
+    if (request.method === 'GET' && request.url === '/api/session') { const session = currentSession(request); return session ? sendJson(response, 200, { email: session.email, role: session.role }) : sendJson(response, 401, { error: 'Требуется авторизация' }); }
+    if (request.method === 'GET' && request.url === '/api/users') { if (!requireAdmin(request, response)) return; return sendJson(response, 200, users); }
+    if (request.method === 'POST' && request.url === '/api/users') {
+      if (!requireAdmin(request, response)) return;
+      const body = await readBody(request);
+      if (!body.name || !body.email || !['Врач', 'Администратор', 'Регистратура'].includes(body.role)) return sendJson(response, 400, { error: 'Заполните корректные данные пользователя' });
+      if (users.some((user) => user.email.toLowerCase() === body.email.toLowerCase())) return sendJson(response, 409, { error: 'Пользователь с таким email уже существует' });
+      const user = { id: Math.max(...users.map((item) => item.id)) + 1, name: body.name.trim(), email: body.email.trim().toLowerCase(), role: body.role, status: 'Ожидает активации', lastLogin: 'Никогда' }; users.unshift(user); return sendJson(response, 201, user);
+    }
+    return serveStatic(request, response);
+  } catch (error) { console.error(error); sendJson(response, 500, { error: 'Внутренняя ошибка сервера' }); }
+});
+server.listen(port, () => console.log(`MedLink server listening on http://localhost:${port}`));

@@ -1,12 +1,5 @@
-const defaultUsers = [
-	['Анна Крылова', 'anna.krylova@medlink.ru', 'Врач', 'Активен', 'Сегодня, 09:42'],
-	['Дмитрий Орлов', 'dmitry.orlov@medlink.ru', 'Администратор', 'Активен', 'Сегодня, 09:18'],
-	['Мария Волкова', 'maria.volkova@medlink.ru', 'Врач', 'Активен', 'Вчера, 18:36'],
-	['Ирина Белова', 'irina.belova@medlink.ru', 'Регистратура', 'Ожидает активации', 'Никогда'],
-	['Сергей Павлов', 'sergey.pavlov@medlink.ru', 'Врач', 'Заблокирован', '22 апр. 2024'],
-	['Ольга Соколова', 'olga.sokolova@medlink.ru', 'Регистратура', 'Активен', '21 апр. 2024']
-];
-const users = JSON.parse(localStorage.getItem('medlink-users') || 'null') || defaultUsers.map((user) => ({ name: user[0], email: user[1], role: user[2], status: user[3], lastLogin: user[4] }));
+
+let users = [];
 const table = document.querySelector('#userTable');
 const emptyState = document.querySelector('#emptyState');
 const search = document.querySelector('#search');
@@ -47,12 +40,40 @@ modal.addEventListener('click', (event) => { if (event.target === modal) closeMo
 document.querySelector('#userForm').addEventListener('submit', (event) => {
 	event.preventDefault();
 	const form = new FormData(event.target);
-	users.unshift({ name: form.get('name'), email: form.get('email'), role: form.get('role'), status: 'Ожидает активации', lastLogin: 'Никогда' });
-	localStorage.setItem('medlink-users', JSON.stringify(users));
-	event.target.reset(); closeModal(); renderUsers(); showToast('Пользователь добавлен и приглашение отправлено');
+	fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: form.get('name'), email: form.get('email'), role: form.get('role') }) }).then(async (response) => {
+		if (!response.ok) throw new Error((await response.json()).error || 'Не удалось создать пользователя');
+		users = await (await fetch('/api/users')).json();
+		event.target.reset(); closeModal(); renderUsers(); showToast('Пользователь добавлен и приглашение отправлено');
+	}).catch((error) => showToast(error.message));
 });
 document.querySelector('#exportUsers').addEventListener('click', () => {
 	const csv = ['Имя,Email,Роль,Статус,Последний вход', ...users.map((user) => [user.name, user.email, user.role, user.status, user.lastLogin].map((value) => `"${value}"`).join(','))].join('\n');
 	const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); link.download = 'medlink-users.csv'; link.click(); URL.revokeObjectURL(link.href); showToast('CSV-файл подготовлен');
 });
-renderUsers();
+
+async function loadUsers() {
+	const response = await fetch('/api/users');
+	if (response.status === 401 || response.status === 403) throw new Error('Нет доступа');
+	users = await response.json();
+	renderUsers();
+}
+
+async function checkSession() {
+	const response = await fetch('/api/session');
+	if (response.ok) {
+		document.querySelector('#authScreen').classList.add('hidden');
+		await loadUsers();
+	}
+}
+
+document.querySelector('#loginForm').addEventListener('submit', async (event) => {
+	event.preventDefault();
+	const form = new FormData(event.target);
+	const response = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: form.get('email'), password: form.get('password') }) });
+	if (!response.ok) { document.querySelector('#authError').textContent = 'Неверный email или пароль'; return; }
+	document.querySelector('#authError').textContent = '';
+	document.querySelector('#authScreen').classList.add('hidden');
+	await loadUsers();
+});
+document.querySelector('#logout').addEventListener('click', async () => { await fetch('/api/logout', { method: 'POST' }); window.location.reload(); });
+checkSession().catch(() => document.querySelector('#authScreen').classList.remove('hidden'));

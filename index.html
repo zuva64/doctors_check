@@ -10,6 +10,18 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <div class="auth-backdrop" id="authScreen">
+    <form class="auth-card" id="loginForm">
+      <div class="brand auth-brand"><span class="brand-mark">+</span>med<span>link</span></div>
+      <div class="modal-kicker">ЗАЩИЩЕННЫЙ ВХОД</div>
+      <h1>Вход администратора</h1>
+      <p>Используйте рабочую учетную запись MedLink для управления доступом.</p>
+      <label>Email<input name="email" type="email" value="admin@medlink.ru" required autocomplete="username"></label>
+      <label>Пароль<input name="password" type="password" value="ChangeMe123!" required autocomplete="current-password"></label>
+      <button class="primary-button auth-submit" type="submit">Войти в систему</button>
+      <div class="auth-error" id="authError"></div>
+    </form>
+  </div>
   <div class="layout">
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">+</span>med<span>link</span></div>
@@ -24,7 +36,7 @@
       <div class="sidebar-footer"><div class="support"><span>?</span><div><strong>Центр поддержки</strong><small>Ответим в течение 15 минут</small></div></div><small>MedLink Admin · v1.0.0</small></div>
     </aside>
     <main class="main">
-      <header class="topbar"><div><div class="crumb">АДМИНИСТРИРОВАНИЕ <span>/</span> ПОЛЬЗОВАТЕЛИ</div><h1>Учетные записи</h1></div><div class="top-right"><button class="bell" aria-label="Уведомления">♧<i></i></button><div class="top-avatar admin-avatar">АМ</div></div></header>
+      <header class="topbar"><div><div class="crumb">АДМИНИСТРИРОВАНИЕ <span>/</span> ПОЛЬЗОВАТЕЛИ</div><h1>Учетные записи</h1></div><div class="top-right"><button class="bell" aria-label="Уведомления">♧<i></i></button><div class="top-avatar admin-avatar">АМ</div><button class="logout-button" id="logout">Выйти</button></div></header>
       <section class="page-content" id="overview">
         <div class="intro"><div><p>Управляйте доступом сотрудников к платформе</p></div><button class="primary-button" id="addUser"><span>＋</span> Добавить пользователя</button></div>
         <div class="metrics" aria-label="Статистика пользователей"><div class="metric"><span class="metric-icon mint">♙</span><div><small>Всего пользователей</small><strong id="totalUsers">24</strong><em>+2 за месяц</em></div></div><div class="metric"><span class="metric-icon blue">◉</span><div><small>Активные сейчас</small><strong>18</strong><em>75% от общего числа</em></div></div><div class="metric"><span class="metric-icon peach">◷</span><div><small>Ожидают активации</small><strong id="pendingUsers">3</strong><em class="warning">Требуют внимания</em></div></div><div class="metric"><span class="metric-icon lilac">▣</span><div><small>Заблокированы</small><strong id="blockedUsers">3</strong><em>За последний месяц</em></div></div></div>
