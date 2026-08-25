@@ -35,14 +35,16 @@ async function loadProfile() {
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   saveButton.disabled = true; setStatus('Сохранение...');
-  const data = Object.fromEntries(new FormData(form));
-  const endpoint = accountRole === 'doctor' ? '/api/doctor/profile' : '/api/patient/profile';
-  const response = await fetch(endpoint, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-  const result = await response.json().catch(() => ({}));
-  saveButton.disabled = false;
-  if (!response.ok) { setStatus(result.error || 'Не удалось сохранить изменения', true); return; }
-  setStatus('Изменения сохранены');
-  setTimeout(() => { window.location.href = document.querySelector('#backLink').href; }, 650);
+  try {
+    const data = Object.fromEntries(new FormData(form));
+    const endpoint = accountRole === 'doctor' ? '/api/doctor/profile' : '/api/patient/profile';
+    const response = await fetch(endpoint, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) { setStatus(result.error || `Ошибка сохранения (${response.status})`, true); return; }
+    setStatus('Изменения сохранены');
+    setTimeout(() => { window.location.href = document.querySelector('#backLink').href; }, 650);
+  } catch (error) { setStatus('Сервер недоступен. Повторите попытку.', true); }
+  finally { saveButton.disabled = false; }
 });
 
 document.querySelector('#logout').addEventListener('click', async () => { await fetch('/api/logout', { method: 'POST' }); window.location.href = '/'; });
