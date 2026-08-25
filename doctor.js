@@ -30,13 +30,5 @@ async function loadProfile() {
 
 document.querySelector('#logout').addEventListener('click', async () => { await fetch('/api/logout', { method: 'POST' }); window.location.href = '/'; });
 document.querySelector('#startNext').addEventListener('click', () => { window.location.href = '/video.html'; });
-document.querySelector('#editProfile').addEventListener('click', async () => {
-  const name = window.prompt('Имя и фамилия', document.querySelector('#profileName').textContent);
-  if (!name) return;
-  const phone = window.prompt('Телефон', '+7 (999) 123-45-67');
-  const specialty = window.prompt('Специальность', document.querySelector('#profileSpecialty').textContent.replace('Врач-', ''));
-  const response = await fetch('/api/doctor/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, phone, specialty }) });
-  showToast(response.ok ? 'Профиль врача сохранен' : 'Не удалось сохранить профиль');
-  if (response.ok) loadProfile();
-});
+document.querySelector('#editProfile').addEventListener('click', () => { window.location.href = '/profile.html'; });
 loadProfile().catch(() => { window.location.href = '/'; });
