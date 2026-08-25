@@ -183,4 +183,4 @@ const server = http.createServer(async (request, response) => {
     return serveStatic(request, response);
   } catch (error) { console.error(error); sendJson(response, 500, { error: 'Внутренняя ошибка сервера' }); }
 });
-server.listen(port, () => console.log(`MedLink server listening on http://localhost:${port}`));
+server.listen(port, '0.0.0.0', () => console.log(`MedLink server listening on http://0.0.0.0:${port}`));
