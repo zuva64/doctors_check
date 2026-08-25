@@ -7,7 +7,7 @@ const port = Number(process.env.PORT || 8000);
 const root = __dirname;
 const sessions = new Map();
 const users = [
-  { id: 1, name: 'Анна Крылова', email: 'anna.krylova@medlink.ru', role: 'Врач', status: 'Активен', lastLogin: 'Сегодня, 09:42' },
+  { id: 1, name: 'Анна Крылова', email: 'anna.krylova@medlink.ru', role: 'Врач', status: 'Активен', lastLogin: 'Сегодня, 09:42', password: 'DoctorDemo123!' },
   { id: 2, name: 'Дмитрий Орлов', email: 'dmitry.orlov@medlink.ru', role: 'Администратор', status: 'Активен', lastLogin: 'Сегодня, 09:18' },
   { id: 3, name: 'Мария Волкова', email: 'maria.volkova@medlink.ru', role: 'Врач', status: 'Активен', lastLogin: 'Вчера, 18:36' },
   { id: 4, name: 'Ирина Белова', email: 'irina.belova@medlink.ru', role: 'Регистратура', status: 'Ожидает активации', lastLogin: 'Никогда' },
@@ -17,6 +17,14 @@ const users = [
 
 function hashPassword(password, salt) { return crypto.scryptSync(password, salt, 64).toString('hex'); }
 const admin = { email: process.env.ADMIN_EMAIL || 'admin@medlink.ru', salt: process.env.ADMIN_SALT || 'medlink-demo-salt', passwordHash: hashPassword(process.env.ADMIN_PASSWORD || 'ChangeMe123!', process.env.ADMIN_SALT || 'medlink-demo-salt') };
+const doctor = { email: 'anna.krylova@medlink.ru', salt: 'anna-demo-salt', passwordHash: hashPassword(process.env.DOCTOR_PASSWORD || 'DoctorDemo123!', 'anna-demo-salt') };
+const doctorProfile = { name: 'Анна Крылова', specialty: 'Терапевт', email: doctor.email, phone: '+7 (999) 123-45-67', license: 'ЛИЦ-77-01-012345', experience: '8 лет', rating: '4.9', todayAppointments: 4 };
+const doctorAppointments = [
+  { time: '10:30', duration: '25 мин', patient: 'Елена Смирнова', type: 'Контрольное посещение', status: 'Сейчас', initials: 'ЕС', tone: 'pink' },
+  { time: '11:15', duration: '30 мин', patient: 'Илья Петров', type: 'Первичный прием', status: 'Через 45 мин', initials: 'ИП', tone: 'yellow' },
+  { time: '12:00', duration: '25 мин', patient: 'Мария Волкова', type: 'Результаты анализов', status: 'Через 1 ч 30 мин', initials: 'МВ', tone: 'blue' },
+  { time: '14:30', duration: '40 мин', patient: 'Алексей Соколов', type: 'Консультация', status: 'Через 4 ч', initials: 'АС', tone: 'violet' }
+];
 
 function sendJson(response, status, body, headers = {}) { response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', ...headers }); response.end(JSON.stringify(body)); }
 function parseCookies(request) { return Object.fromEntries((request.headers.cookie || '').split(';').filter(Boolean).map((item) => item.trim().split('='))); }
@@ -30,14 +38,22 @@ const server = http.createServer(async (request, response) => {
   try {
     if (request.method === 'POST' && request.url === '/api/login') {
       const body = await readBody(request);
-      const passwordHash = hashPassword(String(body.password || ''), admin.salt);
-      if (String(body.email || '').toLowerCase() !== admin.email.toLowerCase() || !safeEqual(passwordHash, admin.passwordHash)) return sendJson(response, 401, { error: 'Неверный email или пароль' });
-      const token = crypto.randomBytes(32).toString('hex'); sessions.set(token, { role: 'admin', email: admin.email, createdAt: Date.now() });
-      return sendJson(response, 200, { email: admin.email, role: 'admin' }, { 'Set-Cookie': `medlink_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800` });
+      const email = String(body.email || '').toLowerCase();
+      const isAdmin = email === admin.email.toLowerCase() && safeEqual(hashPassword(String(body.password || ''), admin.salt), admin.passwordHash);
+      const isDoctor = email === doctor.email.toLowerCase() && safeEqual(hashPassword(String(body.password || ''), doctor.salt), doctor.passwordHash);
+      if (!isAdmin && !isDoctor) return sendJson(response, 401, { error: 'Неверный email или пароль' });
+      const role = isAdmin ? 'admin' : 'doctor';
+      const token = crypto.randomBytes(32).toString('hex'); sessions.set(token, { role, email: isAdmin ? admin.email : doctor.email, createdAt: Date.now() });
+      return sendJson(response, 200, { email: isAdmin ? admin.email : doctor.email, role }, { 'Set-Cookie': `medlink_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800` });
     }
     if (request.method === 'POST' && request.url === '/api/logout') { const token = parseCookies(request).medlink_session; sessions.delete(token); return sendJson(response, 200, { ok: true }, { 'Set-Cookie': 'medlink_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0' }); }
     if (request.method === 'GET' && request.url === '/api/session') { const session = currentSession(request); return session ? sendJson(response, 200, { email: session.email, role: session.role }) : sendJson(response, 401, { error: 'Требуется авторизация' }); }
     if (request.method === 'GET' && request.url === '/api/users') { if (!requireAdmin(request, response)) return; return sendJson(response, 200, users); }
+    if (request.method === 'GET' && request.url === '/api/doctor/profile') {
+      const session = currentSession(request);
+      if (!session || session.role !== 'doctor') return sendJson(response, 403, { error: 'Доступ только для врача' });
+      return sendJson(response, 200, { profile: doctorProfile, appointments: doctorAppointments });
+    }
     if (request.method === 'POST' && request.url === '/api/users') {
       if (!requireAdmin(request, response)) return;
       const body = await readBody(request);

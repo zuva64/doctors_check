@@ -71,6 +71,8 @@ document.querySelector('#loginForm').addEventListener('submit', async (event) =>
 	const form = new FormData(event.target);
 	const response = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: form.get('email'), password: form.get('password') }) });
 	if (!response.ok) { document.querySelector('#authError').textContent = 'Неверный email или пароль'; return; }
+	const account = await response.json();
+	if (account.role === 'doctor') { window.location.href = '/doctor.html'; return; }
 	document.querySelector('#authError').textContent = '';
 	document.querySelector('#authScreen').classList.add('hidden');
 	await loadUsers();

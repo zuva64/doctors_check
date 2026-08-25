@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MedLink — Кабинет врача</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="doctor-page">
+  <div class="layout">
+    <aside class="sidebar"><div class="brand"><span class="brand-mark">+</span>med<span>link</span></div><div class="admin-profile"><div class="avatar doctor-avatar">АК</div><div><strong id="doctorName">Анна Крылова</strong><small id="doctorSpecialty">Терапевт</small></div><button class="dots" aria-label="Меню профиля">•••</button></div><nav aria-label="Навигация"><a href="#today" class="active"><span>◫</span>Мой день</a><a href="#calendar"><span>◷</span>Календарь</a><a href="#patients"><span>♙</span>Мои пациенты</a><a href="#profile"><span>◎</span>Мой профиль</a></nav><div class="sidebar-footer"><div class="support"><span>?</span><div><strong>Центр поддержки</strong><small>Ответим в течение 15 минут</small></div></div><small>MedLink · защищенный кабинет</small></div></aside>
+    <main class="main"><header class="topbar"><div><div class="crumb">ЛИЧНЫЙ КАБИНЕТ <span>/</span> МОЙ ДЕНЬ</div><h1>Добрый день, Анна</h1></div><div class="top-right"><button class="bell" aria-label="Уведомления">♧<i></i></button><div class="top-avatar doctor-avatar">АК</div><button class="logout-button" id="logout">Выйти</button></div></header>
+      <section class="doctor-content" id="today"><div class="doctor-intro"><div><h2>Среда, 24 апреля</h2><p>Ваш рабочий день · 4 приема запланировано</p></div><button class="primary-button" id="startNext">Начать ближайший прием <span>→</span></button></div>
+        <div class="doctor-stats"><div><small>Приемы сегодня</small><strong id="todayCount">4</strong><span>Все по расписанию</span></div><div><small>Следующий прием</small><strong>10:30</strong><span>через 12 минут</span></div><div><small>Средняя оценка</small><strong id="doctorRating">4.9</strong><span class="stars">★★★★★</span></div></div>
+        <div class="doctor-grid"><section class="appointments-card" id="calendar"><div class="card-title"><div><h2>Расписание на сегодня</h2><p>24 апреля 2024 · Среда</p></div><button class="outline-button">Открыть календарь</button></div><div id="doctorAppointments"></div></section><aside class="profile-card-large" id="profile"><div class="profile-cover"></div><div class="profile-large-body"><div class="large-avatar doctor-avatar">АК</div><h2 id="profileName">Анна Крылова</h2><p id="profileSpecialty">Врач-терапевт</p><div class="profile-details"><div><small>Опыт работы</small><strong>8 лет</strong></div><div><small>Лицензия</small><strong>ЛИЦ-77-01-012345</strong></div><div><small>Телефон</small><strong>+7 (999) 123-45-67</strong></div></div><button class="profile-edit" id="editProfile">Редактировать профиль <span>→</span></button></div></aside></div>
+        <section class="notice"><span>◉</span><div><strong>Ваши данные защищены</strong><p>Видеоприемы и медицинская информация доступны только вам и авторизованным участникам консультации.</p></div></section>
+      </section>
+    </main>
+  </div><div class="toast" id="toast"></div><script src="doctor.js"></script>
+</body>
+</html>
