@@ -10,6 +10,9 @@ const remoteFeed = document.querySelector('#remoteFeed');
 const micButton = document.querySelector('#mic');
 const cameraButton = document.querySelector('#camera');
 const screenButton = document.querySelector('#screen');
+const documentSyncStatus = document.querySelector('#documentSyncStatus');
+const documentEditorLabel = document.querySelector('#documentEditorLabel');
+const documentFields = [...document.querySelectorAll('[data-doc-field]')];
 
 let viewer = 'patient';
 let localStream = new MediaStream();
@@ -24,6 +27,10 @@ let signalTimer = null;
 let timer = null;
 let screenTrack = null;
 let leaving = false;
+let docClock = 0;
+let docSyncRequestedForRevision = -1;
+const docVersions = new Map(documentFields.map((field) => [field.dataset.docField, { counter: 0, actor: '' }]));
+const docDebounce = new Map();
 
 function roomApi(action, extra = {}) {
   return fetch('/api/video/room', {
@@ -45,6 +52,7 @@ function setParticipantLabels() {
   document.querySelector('#localRole').textContent = doctor ? 'Врач · локальное видео' : 'Пациент · локальное видео';
   document.querySelector('#remoteName').textContent = doctor ? 'Елена Смирнова' : 'Анна Крылова';
   document.querySelector('#remoteRole').textContent = doctor ? 'Пациент' : 'Врач · удаленное видео';
+  documentEditorLabel.textContent = doctor ? 'Вы редактируете как врач' : 'Вы редактируете как пациент';
 }
 
 async function sendSignal(type, payload) {
@@ -54,6 +62,90 @@ async function sendSignal(type, payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ target, type, payload })
   }));
+}
+
+function setDocumentStatus(text, state = '') {
+  documentSyncStatus.className = `document-sync-status ${state}`.trim();
+  documentSyncStatus.innerHTML = `<span></span>${text}`;
+}
+
+function compareVersion(left, right) {
+  if ((left?.counter || 0) !== (right?.counter || 0)) return (left?.counter || 0) - (right?.counter || 0);
+  return String(left?.actor || '').localeCompare(String(right?.actor || ''));
+}
+
+function documentSnapshot() {
+  const fields = {};
+  for (const field of documentFields) {
+    const key = field.dataset.docField;
+    fields[key] = { value: field.value, version: docVersions.get(key) || { counter: 0, actor: '' } };
+  }
+  return fields;
+}
+
+async function sendDocumentMessage(message) {
+  await sendSignal('ice', { __medlinkSharedDocument: true, ...message });
+}
+
+function applyRemoteField(key, value, version, editorRole) {
+  const field = documentFields.find((item) => item.dataset.docField === key);
+  if (!field) return;
+  const currentVersion = docVersions.get(key) || { counter: 0, actor: '' };
+  if (compareVersion(version, currentVersion) <= 0) return;
+
+  docVersions.set(key, version);
+  docClock = Math.max(docClock, Number(version.counter) || 0);
+  field.value = String(value ?? '');
+  field.classList.remove('remote-update');
+  void field.offsetWidth;
+  field.classList.add('remote-update');
+  setTimeout(() => field.classList.remove('remote-update'), 700);
+  setDocumentStatus(editorRole === 'doctor' ? 'Обновлено врачом' : 'Обновлено пациентом', 'remote');
+}
+
+async function handleDocumentMessage(payload) {
+  if (payload.messageType === 'request') {
+    await sendDocumentMessage({ messageType: 'state', fields: documentSnapshot(), editorRole: viewer });
+    return;
+  }
+
+  if (payload.messageType === 'state' && payload.fields && typeof payload.fields === 'object') {
+    for (const [key, entry] of Object.entries(payload.fields)) {
+      if (!entry || typeof entry !== 'object') continue;
+      applyRemoteField(key, entry.value, entry.version || { counter: 0, actor: '' }, payload.editorRole);
+    }
+    setDocumentStatus('Документ синхронизирован', 'synced');
+    return;
+  }
+
+  if (payload.messageType === 'field') {
+    applyRemoteField(payload.field, payload.value, payload.version || { counter: 0, actor: '' }, payload.editorRole);
+  }
+}
+
+function scheduleDocumentFieldSync(field) {
+  const key = field.dataset.docField;
+  docClock += 1;
+  const version = { counter: docClock, actor: viewer };
+  docVersions.set(key, version);
+  setDocumentStatus('Сохраняем изменения…', 'syncing');
+
+  clearTimeout(docDebounce.get(key));
+  docDebounce.set(key, setTimeout(async () => {
+    try {
+      await sendDocumentMessage({ messageType: 'field', field: key, value: field.value, version, editorRole: viewer });
+      setDocumentStatus('Изменения синхронизированы', 'synced');
+    } catch (error) {
+      console.error(error);
+      setDocumentStatus('Не удалось синхронизировать', 'syncing');
+    }
+  }, 250));
+}
+
+function initDocumentEditing() {
+  for (const field of documentFields) {
+    field.addEventListener('input', () => scheduleDocumentFieldSync(field));
+  }
 }
 
 function updateMediaButtons() {
@@ -152,6 +244,11 @@ async function createOffer() {
 }
 
 async function handleSignal(message) {
+  if (message.type === 'ice' && message.payload && message.payload.__medlinkSharedDocument) {
+    await handleDocumentMessage(message.payload);
+    return;
+  }
+
   if (!peer) createPeer();
 
   if (message.type === 'offer') {
@@ -183,7 +280,9 @@ async function pollSignals() {
   for (const message of response.messages) {
     try { await handleSignal(message); } catch (error) {
       console.error(error);
-      connectionText.textContent = 'Ошибка согласования WebRTC-соединения';
+      if (!(message.type === 'ice' && message.payload && message.payload.__medlinkSharedDocument)) {
+        connectionText.textContent = 'Ошибка согласования WebRTC-соединения';
+      }
     }
   }
 }
@@ -195,6 +294,8 @@ function renderRoom(room) {
       ? 'Ожидание подключения пациента'
       : 'Ожидание подключения врача';
     stateText.textContent = 'Видеоприем начнется после подключения обоих участников';
+    setDocumentStatus('Ожидание второго участника');
+    docSyncRequestedForRevision = -1;
   } else if (!peer || peer.connectionState === 'new') {
     connectionText.textContent = 'Оба участника в комнате, устанавливаем WebRTC-соединение…';
     stateText.textContent = 'Согласование защищенного медиаканала';
@@ -216,6 +317,12 @@ async function applyRoom(room, force = false) {
   if (!both) {
     if (peer && peer.connectionState !== 'new') createPeer();
     return;
+  }
+
+  if (docSyncRequestedForRevision !== room.revision) {
+    docSyncRequestedForRevision = room.revision;
+    setDocumentStatus('Синхронизация документа…', 'syncing');
+    sendDocumentMessage({ messageType: 'request', editorRole: viewer }).catch(console.error);
   }
 
   if (force || revisionChanged || !peer || ['failed', 'closed'].includes(peer.connectionState)) {
@@ -279,6 +386,7 @@ async function leaveRoom(action) {
   leaving = true;
   clearInterval(pollTimer);
   clearInterval(signalTimer);
+  for (const timerId of docDebounce.values()) clearTimeout(timerId);
   await stopScreenShare().catch(() => {});
   localStream.getTracks().forEach((track) => track.stop());
   closePeer();
@@ -294,6 +402,7 @@ async function init() {
     return;
   }
   setParticipantLabels();
+  initDocumentEditing();
 
   try {
     await acquireLocalMedia();
@@ -311,7 +420,7 @@ async function init() {
   lastRevision = joinedRoom.revision;
   await applyRoom(joinedRoom, true);
 
-  signalTimer = setInterval(() => pollSignals().catch(console.error), 500);
+  signalTimer = setInterval(() => pollSignals().catch(console.error), 350);
   pollTimer = setInterval(async () => {
     try {
       const room = await parseJson(await fetch('/api/video/room'));
@@ -319,7 +428,7 @@ async function init() {
     } catch (error) {
       console.error(error);
     }
-  }, 1200);
+  }, 1000);
 }
 
 micButton.addEventListener('click', toggleMic);
