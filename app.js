@@ -9,7 +9,17 @@ const modal = document.querySelector('#modal');
 const toast = document.querySelector('#toast');
 
 function initials(name) {
-	return name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+	return name.split(' ').filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+}
+
+function escapeHtml(value) {
+	return String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
+}
+
+function csvCell(value) {
+	let text = String(value ?? '');
+	if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+	return `"${text.replace(/"/g, '""')}"`;
 }
 
 function renderUsers() {
@@ -18,7 +28,14 @@ function renderUsers() {
 		const matchesText = `${user.name} ${user.email}`.toLowerCase().includes(query);
 		return matchesText && (roleFilter.value === 'all' || user.role === roleFilter.value) && (statusFilter.value === 'all' || user.status === statusFilter.value);
 	});
-	table.innerHTML = filtered.map((user, index) => `<tr><td><input type="checkbox" aria-label="Выбрать ${user.name}"></td><td class="user-cell"><span class="user-avatar avatar-${index % 5}">${initials(user.name)}</span><span>${user.name}<small>${user.email}</small></span></td><td class="role">${user.role}</td><td><span class="status ${user.status === 'Ожидает активации' ? 'pending' : user.status === 'Заблокирован' ? 'blocked' : ''}">${user.status}</span></td><td>${user.lastLogin}</td><td><button class="row-menu" aria-label="Действия для ${user.name}">•••</button></td></tr>`).join('');
+	table.innerHTML = filtered.map((user, index) => {
+		const name = escapeHtml(user.name);
+		const email = escapeHtml(user.email);
+		const role = escapeHtml(user.role);
+		const status = escapeHtml(user.status);
+		const lastLogin = escapeHtml(user.lastLogin);
+		return `<tr><td><input type="checkbox" aria-label="Выбрать ${name}"></td><td class="user-cell"><span class="user-avatar avatar-${index % 5}">${escapeHtml(initials(user.name))}</span><span>${name}<small>${email}</small></span></td><td class="role">${role}</td><td><span class="status ${user.status === 'Ожидает активации' ? 'pending' : user.status === 'Заблокирован' ? 'blocked' : ''}">${status}</span></td><td>${lastLogin}</td><td><button class="row-menu" aria-label="Действия для ${name}">•••</button></td></tr>`;
+	}).join('');
 	emptyState.style.display = filtered.length ? 'none' : 'block';
 	document.querySelector('#resultCount').textContent = `Показано ${filtered.length} из ${users.length} пользователей`;
 	document.querySelector('#userCount').textContent = users.length;
@@ -47,36 +64,42 @@ document.querySelector('#userForm').addEventListener('submit', (event) => {
 	}).catch((error) => showToast(error.message));
 });
 document.querySelector('#exportUsers').addEventListener('click', () => {
-	const csv = ['Имя,Email,Роль,Статус,Последний вход', ...users.map((user) => [user.name, user.email, user.role, user.status, user.lastLogin].map((value) => `"${value}"`).join(','))].join('\n');
-	const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); link.download = 'medlink-users.csv'; link.click(); URL.revokeObjectURL(link.href); showToast('CSV-файл подготовлен');
+	const csv = ['Имя,Email,Роль,Статус,Последний вход', ...users.map((user) => [user.name, user.email, user.role, user.status, user.lastLogin].map(csvCell).join(','))].join('\n');
+	const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
+	const link = document.createElement('a'); link.href = url; link.download = 'medlink-users.csv'; link.click(); URL.revokeObjectURL(url); showToast('CSV-файл подготовлен');
 });
 
 async function loadUsers() {
 	const response = await fetch('/api/users');
 	if (response.status === 401 || response.status === 403) throw new Error('Нет доступа');
+	if (!response.ok) throw new Error('Не удалось загрузить пользователей');
 	users = await response.json();
 	renderUsers();
 }
 
 async function checkSession() {
 	const response = await fetch('/api/session');
-	if (response.ok) {
-		document.querySelector('#authScreen').classList.add('hidden');
-		await loadUsers();
-	}
+	if (!response.ok) return;
+	const account = await response.json();
+	if (account.role === 'doctor') { window.location.href = '/doctor.html'; return; }
+	if (account.role === 'patient') { window.location.href = '/patient.html'; return; }
+	if (account.role !== 'admin') { await fetch('/api/logout', { method: 'POST' }); return; }
+	document.querySelector('#authScreen').classList.add('hidden');
+	await loadUsers();
 }
 
 document.querySelector('#loginForm').addEventListener('submit', async (event) => {
 	event.preventDefault();
 	const form = new FormData(event.target);
 	const response = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: form.get('email'), password: form.get('password') }) });
-	if (!response.ok) { document.querySelector('#authError').textContent = 'Неверный email или пароль'; return; }
+	if (!response.ok) { const payload = await response.json().catch(() => ({})); document.querySelector('#authError').textContent = payload.error || 'Неверный email или пароль'; return; }
 	const account = await response.json();
 	if (account.role === 'doctor') { window.location.href = '/doctor.html'; return; }
 	if (account.role === 'patient') { window.location.href = '/patient.html'; return; }
+	if (account.role !== 'admin') { document.querySelector('#authError').textContent = 'Нет доступа к административной панели'; await fetch('/api/logout', { method: 'POST' }); return; }
 	document.querySelector('#authError').textContent = '';
 	document.querySelector('#authScreen').classList.add('hidden');
 	await loadUsers();
 });
 document.querySelector('#logout').addEventListener('click', async () => { await fetch('/api/logout', { method: 'POST' }); window.location.reload(); });
-checkSession().catch(() => document.querySelector('#authScreen').classList.remove('hidden'));
+checkSession().catch((error) => { document.querySelector('#authError').textContent = error.message; document.querySelector('#authScreen').classList.remove('hidden'); });
