@@ -1,11 +1,7 @@
 {
-  "name": "doctors-check",
+  "name": "edulink",
   "version": "1.0.0",
   "private": true,
-  "scripts": {
-    "start": "node server.js"
-  },
-  "engines": {
-    "node": ">=22.5.0"
-  }
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=22.5.0" }
 }
